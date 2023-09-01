@@ -25,7 +25,13 @@ import com.sk89q.worldedit.function.pattern.Pattern;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.regions.Region;
 import com.sk89q.worldedit.world.block.BaseBlock;
+import com.sk89q.worldedit.world.block.SafeBlockData;
 
+import com.sk89q.worldedit.math.Vector2;
+
+import java.util.List;
+import java.util.Arrays;
+import java.lang.Math;
 /**
  * Generates solid and hollow shapes according to materials returned by the
  * {@link #getMaterial} method.
@@ -114,6 +120,40 @@ public abstract class ArbitraryShape {
         }
 
         return affected;
+    }
+
+    // to be overridden in case of a parametric shape
+    protected SafeBlockData getMaterial(double[] parameters, BaseBlock defaultMaterial){
+        return null;
+    }
+
+    // call this to draw parametric shape to cache
+    protected void fillCache(BaseBlock defaultMaterial, List<Vector2> parameterLimits) {
+        int numParams = parameterLimits.size();
+        if (numParams>1) {
+            throw new Exception("Currently, no more than 1 parameters are allowed"); //TODO: increase later
+        }
+        int numDivisions = 100;
+        // init cache
+        cache = new Object[cacheSizeX * cacheSizeY * cacheSizeZ];
+        Arrays.fill(cache, OUTSIDE);
+        // build parameter grid
+        double[][] grid = new double[math.pow(numDivisions,numParams)][numParams];
+        for (int i=0; i<numDivisions; i++) {
+            grid[i] = new double[]{parameterLimits.get(0).getX() + (parameterLimits.get(0).getY()-parameterLimits.get(0).getX())/numDivisions};
+        }
+        
+        // Loop over grid
+        for (double[] parameters : grid) {
+            SafeBlockData safe = getMaterial(parameters, defaultMaterial);
+            //TODO: better rounding?
+            int x= (int) safe.getPosition().getX(), (int) y=safe.getPosition().getY(), (int) z=safe.getPosition().getZ();
+            // TODO: Test whether position is in cache area
+            int index = (y - cacheOffsetY) + (z - cacheOffsetZ) * cacheSizeY + (x - cacheOffsetX) * cacheSizeY * cacheSizeZ;
+            if (material != null) {
+                cache[index] = SafeBlockData.getMaterial();
+            }
+        }
     }
 
     private BaseBlock getMaterial(BlockVector3 position, Pattern pattern, boolean hollow) {

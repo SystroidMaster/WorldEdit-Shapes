@@ -421,6 +421,78 @@ public class GenerationCommands {
     }
 
     @Command(
+        name = "/parametric",
+        aliases = { "/param", "/par" },
+        desc = "Generates a shape according to a parametric description.",
+        descFooter = "For details, see https://ehub.to/we/expr (well, not yet)"
+    )
+    @CommandPermissions("worldedit.generation.shape")
+    @Logging(ALL)
+    public int parametric(Actor actor, LocalSession session, EditSession editSession,
+                        @Selection Region region,
+                        @Arg(desc = "The pattern of blocks to set")
+                            Pattern pattern,
+                        @Arg(desc = "Expression to test block placement locations and set block type", variable = true)
+                            List<String> expression,
+                        @Switch(name = 'h', desc = "Generate a hollow shape")
+                            boolean hollow,
+                        @Switch(name = 'r', desc = "Use the game's coordinate origin")
+                            boolean useRawCoords,
+                        @Switch(name = 'o', desc = "Use the placement's coordinate origin")
+                            boolean offset,
+                        @Switch(name = 'c', desc = "Use the selection's center as origin")
+                            boolean offsetCenter) throws WorldEditException {
+
+        final Vector3 zero;
+        Vector3 unit;
+
+        if (useRawCoords) {
+            zero = Vector3.ZERO;
+            unit = Vector3.ONE;
+        } else if (offset) {
+            zero = session.getPlacementPosition(actor).toVector3();
+            unit = Vector3.ONE;
+        } else if (offsetCenter) {
+            final Vector3 min = region.getMinimumPoint().toVector3();
+            final Vector3 max = region.getMaximumPoint().toVector3();
+
+            zero = max.add(min).multiply(0.5);
+            unit = Vector3.ONE;
+        } else {
+            final Vector3 min = region.getMinimumPoint().toVector3();
+            final Vector3 max = region.getMaximumPoint().toVector3();
+
+            zero = max.add(min).multiply(0.5);
+            unit = max.subtract(zero);
+
+            if (unit.getX() == 0) {
+                unit = unit.withX(1.0);
+            }
+            if (unit.getY() == 0) {
+                unit = unit.withY(1.0);
+            }
+            if (unit.getZ() == 0) {
+                unit = unit.withZ(1.0);
+            }
+        }
+
+        // TODO: take the following as command input
+        List<String> parameterNames = {"t"};
+        List<Vector2> parameterLimits = {Vector2(-1.0,1.0)};
+        try {
+            final int affected = editSession.makeParametricShape(region, zero, unit, pattern, parameterNames, parameterLimits, String.join(" ", expression), hollow, session.getTimeout());
+            if (actor instanceof Player) {
+                ((Player) actor).findFreePosition();
+            }
+            actor.printInfo(TranslatableComponent.of("worldedit.generate.created", TextComponent.of(affected)));
+            return affected;
+        } catch (ExpressionException e) {
+            actor.printError(TextComponent.of(e.getMessage()));
+            return 0;
+        }
+    }
+
+    @Command(
         name = "/generatebiome",
         aliases = { "/genbiome", "/gb" },
         desc = "Sets biome according to a formula.",

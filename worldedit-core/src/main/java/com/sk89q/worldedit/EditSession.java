@@ -124,6 +124,7 @@ import com.sk89q.worldedit.world.block.BlockStateHolder;
 import com.sk89q.worldedit.world.block.BlockType;
 import com.sk89q.worldedit.world.block.BlockTypes;
 import com.sk89q.worldedit.world.registry.LegacyMapper;
+import com.sk89q.worldedit.world.block.SafeBlockData;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
@@ -2371,6 +2372,136 @@ public class EditSession implements Extent, AutoCloseable {
         }
         return changed;
     }
+
+
+    /**
+     * Generate a shape for the given expression.
+     *
+     * @param region the region to generate the shape in
+     * @param zero the coordinate origin for x/y/z variables
+     * @param unit the scale of the x/y/z/ variables
+     * @param pattern the default material to make the shape from
+     * @param expressionString the expression defining the shape
+     * @param hollow whether the shape should be hollow
+     * @return number of blocks changed
+     * @throws ExpressionException if there is a problem with the expression
+     * @throws MaxChangedBlocksException if the maximum block change limit is exceeded
+     */
+    public int makeParametricShape(final Region region, final Vector3 zero, final Vector3 unit,
+                         final Pattern pattern, final List<String> parameterNames, List<Vector2> parameterLimits, final String expressionString, final boolean hollow)
+            throws ExpressionException, MaxChangedBlocksException {
+        return makeParametricShape(region, zero, unit, pattern, parameterNames, parameterLimits, expressionString, hollow, WorldEdit.getInstance().getConfiguration().calculationTimeout);
+    }
+
+    /**
+     * Generate a shape for the given expression.
+     *
+     * @param region the region to generate the shape in
+     * @param zero the coordinate origin for x/y/z variables
+     * @param unit the scale of the x/y/z/ variables
+     * @param pattern the default material to make the shape from
+     * @param expressionString the expression defining the shape
+     * @param hollow whether the shape should be hollow
+     * @param timeout the time, in milliseconds, to wait for each expression evaluation before halting it. -1 to disable
+     * @return number of blocks changed
+     * @throws ExpressionException if there is a problem with the expression
+     * @throws MaxChangedBlocksException if the maximum block change limit is exceeded
+     */
+    public int makeParametricShape(final Region region, final Vector3 zero, final Vector3 unit,
+                         final Pattern pattern, final List<String> parameterNames, List<Vector2> parameterLimits, final String expressionString, final boolean hollow, final int timeout)
+            throws ExpressionException, MaxChangedBlocksException {
+        final Expression expression = Expression.compile(expressionString, "x", "y", "z", "type", "data", parameterNames); //TODO: make this work
+        expression.optimize();
+        return makeParametricShape(region, zero, unit, pattern, parameterNames, parameterLimits, expression, hollow, timeout);
+    }
+
+
+    public int makeParametricShape(final Region region, final Vector3 zero, final Vector3 unit,
+                         final Pattern pattern, final List<String> parameterNames, List<Vector2> parameterLimits, final Expression expression, final boolean hollow, final int timeout)
+            throws ExpressionException, MaxChangedBlocksException {
+
+        for (String parName : parameterNames) {
+            expression.getSlots().getVariable(parName)
+            .orElseThrow(IllegalStateException::new);
+        }
+
+        final Variable xVariable = expression.getSlots().getVariable("x")
+            .orElseThrow(IllegalStateException::new);
+        final Variable yVariable = expression.getSlots().getVariable("y")
+            .orElseThrow(IllegalStateException::new);
+        final Variable zVariable = expression.getSlots().getVariable("z")
+            .orElseThrow(IllegalStateException::new);
+
+        final Variable typeVariable = expression.getSlots().getVariable("type")
+            .orElseThrow(IllegalStateException::new);
+        final Variable dataVariable = expression.getSlots().getVariable("data")
+            .orElseThrow(IllegalStateException::new);
+
+        final WorldEditExpressionEnvironment environment = new WorldEditExpressionEnvironment(this, unit, zero);
+        expression.setEnvironment(environment);
+
+        final int[] timedOut = {0};
+        final ArbitraryShape shape = new ArbitraryShape(region) {
+            @Override
+            protected BaseBlock getMaterial(int x, int y, int z, BaseBlock defaultMaterial) {
+                // Warning/TODO: Might cause infinite recursion if cache has not been filled yet.
+                return getMaterialCached(x, y, z, pattern);
+            }
+            @Override
+            protected SafeBlockData getMaterial(double[] parameters, BaseBlock defaultMaterial) {
+                try {
+                    int[] legacy = LegacyMapper.getInstance().getLegacyFromBlock(defaultMaterial.toImmutableState());
+                    int typeVar = 0;
+                    int dataVar = 0;
+                    if (legacy != null) {
+                        typeVar = legacy[0];
+                        if (legacy.length > 1) {
+                            dataVar = legacy[1];
+                        }
+                    }
+                    
+                    List<double> varInits = List.of(0,0,0,typeVar,dataVar);
+                    varInits.add(parameters);
+                    //TODO: Go on here by creating correct initializing for expression variables
+                    expression.evaluate(varInits.toArray(), timeout); // TODO: maybe consider return value as additional condition
+                    
+                    // read coordinates calculated from parameters
+                    double x = (double) xVariable.getValue();
+                    double y = (double) yVariable.getValue();
+                    double z = (double) zVariable.getValue();
+                    Vector3 position = new Vector3(x,y,z);
+
+                    int newType = (int) typeVariable.getValue();
+                    int newData = (int) dataVariable.getValue();
+                    if (newType != typeVar || newData != dataVar) {
+                        BlockState state = LegacyMapper.getInstance().getBlockFromLegacy(newType, newData);
+                        return state == null ? new SafeBlockData(position, defaultMaterial) : new SafeBlockData(position, state.toBaseBlock());
+                    } else {
+                        return new SafeBlockData(position, defaultMaterial);
+                    }
+                    final Vector3 current = Vector3.at(x, y, z);
+                    environment.setCurrentBlock(current);
+                    final Vector3 scaled = current.multiply(unit).add(zero);
+                } catch (ExpressionTimeoutException e) {
+                    timedOut[0] = timedOut[0] + 1;
+                    return null;
+                } catch (RuntimeException e) {
+                    throw e;
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        };
+        shape.fillCache(parameterLimits);
+        int changed = shape.generate(this, pattern, hollow, true);
+        if (timedOut[0] > 0) {
+            throw new ExpressionTimeoutException(
+                    String.format("%d blocks changed. %d blocks took too long to evaluate (increase with //timeout).",
+                            changed, timedOut[0]));
+        }
+        return changed;
+    }
+
 
     /**
      * Deforms the region by a given expression. A deform provides a block's x, y, and z coordinates (possibly scaled)
