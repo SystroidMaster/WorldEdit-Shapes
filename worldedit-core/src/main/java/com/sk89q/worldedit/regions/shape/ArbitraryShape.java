@@ -123,37 +123,43 @@ public abstract class ArbitraryShape {
     }
 
     // to be overridden in case of a parametric shape
-    protected SafeBlockData getMaterial(double[] parameters, BaseBlock defaultMaterial){
+    protected SafeBlockData getMaterial(double[] parameters, Pattern pattern){
         return null;
     }
 
     // call this to draw parametric shape to cache
-    protected void fillCache(BaseBlock defaultMaterial, List<Vector2> parameterLimits) {
+    public void fillCache(Pattern pattern, List<Vector2> parameterLimits) {
         int numParams = parameterLimits.size();
         if (numParams>1) {
-            throw new Exception("Currently, no more than 1 parameters are allowed"); //TODO: increase later
+            //Currently, no more than 1 parameters are allowed 
+            //TODO: increase later
+            numParams=1;
+            parameterLimits = List.of(parameterLimits.get(0));
         }
-        int numDivisions = 100;
+        int numDivisions = 1000;
         // init cache
         cache = new Object[cacheSizeX * cacheSizeY * cacheSizeZ];
         Arrays.fill(cache, OUTSIDE);
         // build parameter grid
-        double[][] grid = new double[math.pow(numDivisions,numParams)][numParams];
+        double[][] grid = new double[(int)Math.round(Math.pow(numDivisions,numParams))][numParams];
         for (int i=0; i<numDivisions; i++) {
-            grid[i] = new double[]{parameterLimits.get(0).getX() + (parameterLimits.get(0).getY()-parameterLimits.get(0).getX())/numDivisions};
+            grid[i] = new double[]{parameterLimits.get(0).getX() + i*(parameterLimits.get(0).getZ()-parameterLimits.get(0).getX())/numDivisions};
         }
         
         // Loop over grid
         for (double[] parameters : grid) {
-            SafeBlockData safe = getMaterial(parameters, defaultMaterial);
-            //TODO: better rounding?
-            int x= (int) safe.getPosition().getX(), (int) y=safe.getPosition().getY(), (int) z=safe.getPosition().getZ();
-            // TODO: Test whether position is in cache area
-            int index = (y - cacheOffsetY) + (z - cacheOffsetZ) * cacheSizeY + (x - cacheOffsetX) * cacheSizeY * cacheSizeZ;
+            SafeBlockData safe = getMaterial(parameters, pattern);
+            int x=safe.getPosition().getX(), y=safe.getPosition().getY(), z=safe.getPosition().getZ();
+            // Test whether position is in cache area
+            if (!cacheContains(x,y,z)) {
+                continue;
+            }
+            BaseBlock material = safe.getMaterial();
             if (material != null) {
-                cache[index] = SafeBlockData.getMaterial();
+                cache[getCacheIndex(x,y,z)] = material;
             }
         }
+
     }
 
     private BaseBlock getMaterial(BlockVector3 position, Pattern pattern, boolean hollow) {
@@ -199,8 +205,8 @@ public abstract class ArbitraryShape {
     }
 
     private Object getMaterialCached(int x, int y, int z, Pattern pattern) {
-        final int index = (y - cacheOffsetY) + (z - cacheOffsetZ) * cacheSizeY + (x - cacheOffsetX) * cacheSizeY * cacheSizeZ;
-        final Object cacheEntry = cache[index];
+        final Object cacheEntry = getCacheEntry(x,y,z);
+        final int index = getCacheIndex(x,y,z);
         if (cacheEntry == null) {
             final BaseBlock material = getMaterial(x, y, z, pattern.applyBlock(BlockVector3.at(x, y, z)));
             if (material == null) {
@@ -210,5 +216,21 @@ public abstract class ArbitraryShape {
             }
         }
         return cacheEntry;
+    }
+
+    protected int getCacheIndex(int x, int y, int z) {
+        return (y - cacheOffsetY) + (z - cacheOffsetZ) * cacheSizeY + (x - cacheOffsetX) * cacheSizeY * cacheSizeZ;
+    }
+
+    protected boolean cacheContains(int x, int y, int z) {
+        return (cacheOffsetX<=x && x<cacheOffsetX+cacheSizeX && cacheOffsetY<=y && y<cacheOffsetY+cacheSizeY && cacheOffsetZ<=z && z<cacheOffsetZ+cacheSizeZ);
+    }
+
+    protected Object getCacheEntry(int x, int y, int z) {
+        // check whether coordinates are in cache area
+        if (!cacheContains(x,y,z)){
+            return null;
+        }
+        return cache[getCacheIndex(x,y,z)];
     }
 }

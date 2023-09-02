@@ -33,6 +33,7 @@ import com.sk89q.worldedit.internal.annotation.Radii;
 import com.sk89q.worldedit.internal.annotation.Selection;
 import com.sk89q.worldedit.internal.expression.ExpressionException;
 import com.sk89q.worldedit.math.BlockVector3;
+import com.sk89q.worldedit.math.Vector2;
 import com.sk89q.worldedit.math.Vector3;
 import com.sk89q.worldedit.regions.Region;
 import com.sk89q.worldedit.util.TreeGenerator.TreeType;
@@ -477,8 +478,8 @@ public class GenerationCommands {
         }
 
         // TODO: take the following as command input
-        List<String> parameterNames = {"t"};
-        List<Vector2> parameterLimits = {Vector2(-1.0,1.0)};
+        List<String> parameterNames = List.of("t");
+        List<Vector2> parameterLimits = List.of(Vector2.at(-1.0,1.0));
         try {
             final int affected = editSession.makeParametricShape(region, zero, unit, pattern, parameterNames, parameterLimits, String.join(" ", expression), hollow, session.getTimeout());
             if (actor instanceof Player) {

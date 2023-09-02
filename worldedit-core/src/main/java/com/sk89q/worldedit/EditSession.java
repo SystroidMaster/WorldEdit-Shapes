@@ -126,6 +126,7 @@ import com.sk89q.worldedit.world.block.BlockTypes;
 import com.sk89q.worldedit.world.registry.LegacyMapper;
 import com.sk89q.worldedit.world.block.SafeBlockData;
 import org.apache.logging.log4j.Logger;
+//import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -137,7 +138,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.DoubleStream;
+import java.util.Arrays;
 import javax.annotation.Nullable;
+
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -2410,7 +2414,9 @@ public class EditSession implements Extent, AutoCloseable {
     public int makeParametricShape(final Region region, final Vector3 zero, final Vector3 unit,
                          final Pattern pattern, final List<String> parameterNames, List<Vector2> parameterLimits, final String expressionString, final boolean hollow, final int timeout)
             throws ExpressionException, MaxChangedBlocksException {
-        final Expression expression = Expression.compile(expressionString, "x", "y", "z", "type", "data", parameterNames); //TODO: make this work
+        List<String> varNames = new ArrayList(Arrays.asList("x", "y", "z", "type", "data"));
+        varNames.addAll(parameterNames);
+        final Expression expression = Expression.compile(expressionString, varNames.toArray(new String[0]));
         expression.optimize();
         return makeParametricShape(region, zero, unit, pattern, parameterNames, parameterLimits, expression, hollow, timeout);
     }
@@ -2444,44 +2450,47 @@ public class EditSession implements Extent, AutoCloseable {
         final ArbitraryShape shape = new ArbitraryShape(region) {
             @Override
             protected BaseBlock getMaterial(int x, int y, int z, BaseBlock defaultMaterial) {
-                // Warning/TODO: Might cause infinite recursion if cache has not been filled yet.
-                return getMaterialCached(x, y, z, pattern);
+                // TODO: maybe redo whole execution flow in ArbitraryShape because it is a bit unclear...
+                Object cacheEntry = getCacheEntry(x,y,z);
+                if (cacheEntry instanceof BaseBlock) {
+                    return (BaseBlock)cacheEntry;
+                }
+                return null;
             }
             @Override
-            protected SafeBlockData getMaterial(double[] parameters, BaseBlock defaultMaterial) {
+            protected SafeBlockData getMaterial(double[] parameters, Pattern pattern) {
                 try {
-                    int[] legacy = LegacyMapper.getInstance().getLegacyFromBlock(defaultMaterial.toImmutableState());
-                    int typeVar = 0;
-                    int dataVar = 0;
-                    if (legacy != null) {
-                        typeVar = legacy[0];
-                        if (legacy.length > 1) {
-                            dataVar = legacy[1];
-                        }
-                    }
+                    // cannot provide better initialization (with a defaultMaterial) from pattern as position is not known yet
+                    int typeVar = -1;
+                    int dataVar = -1;
                     
-                    List<double> varInits = List.of(0,0,0,typeVar,dataVar);
-                    varInits.add(parameters);
+                    List<Double> varInits = new ArrayList(Arrays.asList(0.0,0.0,0.0,(double)typeVar,(double)dataVar));
+                    varInits.addAll(DoubleStream.of(parameters).boxed().toList());
+                    
                     //TODO: Go on here by creating correct initializing for expression variables
-                    expression.evaluate(varInits.toArray(), timeout); // TODO: maybe consider return value as additional condition
+                    expression.evaluate(varInits.stream().mapToDouble(Double::doubleValue).toArray(), timeout); // TODO: maybe consider return value as additional condition
                     
                     // read coordinates calculated from parameters
-                    double x = (double) xVariable.getValue();
-                    double y = (double) yVariable.getValue();
-                    double z = (double) zVariable.getValue();
-                    Vector3 position = new Vector3(x,y,z);
+                    double x = xVariable.getValue();
+                    double y = yVariable.getValue();
+                    double z = zVariable.getValue();
 
+                    Vector3 rawPos = Vector3.at(x,y,z);
+                    Vector3 scaledPos = rawPos.multiply(unit).add(zero);
+                    environment.setCurrentBlock(scaledPos);
+                    // TODO: Decide whether rounding should be done.
+                    BlockVector3 position = scaledPos.toBlockPoint();
+
+                    BaseBlock defaultMaterial = pattern.applyBlock(position);
                     int newType = (int) typeVariable.getValue();
                     int newData = (int) dataVariable.getValue();
+
                     if (newType != typeVar || newData != dataVar) {
                         BlockState state = LegacyMapper.getInstance().getBlockFromLegacy(newType, newData);
                         return state == null ? new SafeBlockData(position, defaultMaterial) : new SafeBlockData(position, state.toBaseBlock());
                     } else {
                         return new SafeBlockData(position, defaultMaterial);
                     }
-                    final Vector3 current = Vector3.at(x, y, z);
-                    environment.setCurrentBlock(current);
-                    final Vector3 scaled = current.multiply(unit).add(zero);
                 } catch (ExpressionTimeoutException e) {
                     timedOut[0] = timedOut[0] + 1;
                     return null;
@@ -2492,8 +2501,8 @@ public class EditSession implements Extent, AutoCloseable {
                 }
             }
         };
-        shape.fillCache(parameterLimits);
-        int changed = shape.generate(this, pattern, hollow, true);
+        shape.fillCache(pattern, parameterLimits);
+        int changed = shape.generate(this, pattern, hollow);
         if (timedOut[0] > 0) {
             throw new ExpressionTimeoutException(
                     String.format("%d blocks changed. %d blocks took too long to evaluate (increase with //timeout).",
