@@ -127,14 +127,14 @@ public abstract class ArbitraryShape {
         return null;
     }
 
-    // call this to draw parametric shape to cache
+    // draws parametric shape to cache
     public void fillCache(Pattern pattern, List<Vector2> parameterLimits) {
         int numParams = parameterLimits.size();
-        if (numParams>1) {
-            //Currently, no more than 1 parameters are allowed 
-            //TODO: increase later
-            numParams=1;
-            parameterLimits = List.of(parameterLimits.get(0));
+        if (numParams>3) {
+            //Currently, no more than 3 parameters are allowed
+            //TODO: give warning that parameters are ignored?
+            numParams=3;
+            parameterLimits = parameterLimits.subList(0,3);
         }
         int numDivisions = 1000;
         // init cache
