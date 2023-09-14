@@ -23,9 +23,10 @@ import com.sk89q.worldedit.EditSession;
 import com.sk89q.worldedit.MaxChangedBlocksException;
 import com.sk89q.worldedit.function.pattern.Pattern;
 import com.sk89q.worldedit.math.BlockVector3;
+import com.sk89q.worldedit.math.geom.AdaptiveParameterGrid;
 import com.sk89q.worldedit.regions.Region;
 import com.sk89q.worldedit.world.block.BaseBlock;
-import com.sk89q.worldedit.world.block.SafeBlockData;
+import com.sk89q.worldedit.world.block.ParametricBlockData;
 
 import com.sk89q.worldedit.math.Vector2;
 
@@ -123,43 +124,41 @@ public abstract class ArbitraryShape {
     }
 
     // to be overridden in case of a parametric shape
-    protected SafeBlockData getMaterial(double[] parameters, Pattern pattern){
+    protected ParametricBlockData getMaterial(double[] parameters, Pattern pattern){
         return null;
     }
 
     // draws parametric shape to cache
-    public void fillCache(Pattern pattern, List<Vector2> parameterLimits) {
-        int numParams = parameterLimits.size();
+    public void fillCache(Pattern pattern, Vector2[] parameterLimits) {
+        int numParams = parameterLimits.length;
         if (numParams>3) {
             //Currently, no more than 3 parameters are allowed
             //TODO: give warning that parameters are ignored?
             numParams=3;
-            parameterLimits = parameterLimits.subList(0,3);
+            parameterLimits = Arrays.copyOf(parameterLimits,3);
         }
-        int numDivisions = 1000;
         // init cache
         cache = new Object[cacheSizeX * cacheSizeY * cacheSizeZ];
         Arrays.fill(cache, OUTSIDE);
         // build parameter grid
-        double[][] grid = new double[(int)Math.round(Math.pow(numDivisions,numParams))][numParams];
-        for (int i=0; i<numDivisions; i++) {
-            grid[i] = new double[]{parameterLimits.get(0).getX() + i*(parameterLimits.get(0).getZ()-parameterLimits.get(0).getX())/numDivisions};
-        }
-        
-        // Loop over grid
-        for (double[] parameters : grid) {
-            SafeBlockData safe = getMaterial(parameters, pattern);
-            int x=safe.getPosition().getX(), y=safe.getPosition().getY(), z=safe.getPosition().getZ();
+        AdaptiveParameterGrid grid = new AdaptiveParameterGrid((parameters) -> getMaterial(parameters, pattern), parameterLimits);
+
+        // TODO: Take the following values as input?
+        int[] numMinSplittingLevels = new int[numParams];
+        Arrays.fill(numMinSplittingLevels, 2);
+        int maxRecursionDepth = 24;
+        // Loop adaptively calculated blocks
+        for (ParametricBlockData block : grid.getBlocksAdaptive(numMinSplittingLevels ,maxRecursionDepth)) {
+            int x=block.getPosition().getX(), y=block.getPosition().getY(), z=block.getPosition().getZ();
             // Test whether position is in cache area
             if (!cacheContains(x,y,z)) {
                 continue;
             }
-            BaseBlock material = safe.getMaterial();
+            BaseBlock material = block.getMaterial();
             if (material != null) {
                 cache[getCacheIndex(x,y,z)] = material;
             }
         }
-
     }
 
     private BaseBlock getMaterial(BlockVector3 position, Pattern pattern, boolean hollow) {

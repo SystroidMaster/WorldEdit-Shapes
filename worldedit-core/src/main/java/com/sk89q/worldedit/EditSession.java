@@ -124,7 +124,7 @@ import com.sk89q.worldedit.world.block.BlockStateHolder;
 import com.sk89q.worldedit.world.block.BlockType;
 import com.sk89q.worldedit.world.block.BlockTypes;
 import com.sk89q.worldedit.world.registry.LegacyMapper;
-import com.sk89q.worldedit.world.block.SafeBlockData;
+import com.sk89q.worldedit.world.block.ParametricBlockData;
 import org.apache.logging.log4j.Logger;
 //import org.apache.commons.lang3.ArrayUtils;
 
@@ -2392,7 +2392,7 @@ public class EditSession implements Extent, AutoCloseable {
      * @throws MaxChangedBlocksException if the maximum block change limit is exceeded
      */
     public int makeParametricShape(final Region region, final Vector3 zero, final Vector3 unit,
-                         final Pattern pattern, final List<String> parameterNames, List<Vector2> parameterLimits, final String expressionString, final boolean hollow)
+                         final Pattern pattern, final List<String> parameterNames, Vector2[] parameterLimits, final String expressionString, final boolean hollow)
             throws ExpressionException, MaxChangedBlocksException {
         return makeParametricShape(region, zero, unit, pattern, parameterNames, parameterLimits, expressionString, hollow, WorldEdit.getInstance().getConfiguration().calculationTimeout);
     }
@@ -2412,7 +2412,7 @@ public class EditSession implements Extent, AutoCloseable {
      * @throws MaxChangedBlocksException if the maximum block change limit is exceeded
      */
     public int makeParametricShape(final Region region, final Vector3 zero, final Vector3 unit,
-                         final Pattern pattern, final List<String> parameterNames, List<Vector2> parameterLimits, final String expressionString, final boolean hollow, final int timeout)
+                         final Pattern pattern, final List<String> parameterNames, Vector2[] parameterLimits, final String expressionString, final boolean hollow, final int timeout)
             throws ExpressionException, MaxChangedBlocksException {
         List<String> varNames = new ArrayList(Arrays.asList("x", "y", "z", "type", "data"));
         varNames.addAll(parameterNames);
@@ -2423,7 +2423,7 @@ public class EditSession implements Extent, AutoCloseable {
 
 
     public int makeParametricShape(final Region region, final Vector3 zero, final Vector3 unit,
-                         final Pattern pattern, final List<String> parameterNames, List<Vector2> parameterLimits, final Expression expression, final boolean hollow, final int timeout)
+                         final Pattern pattern, final List<String> parameterNames, Vector2[] parameterLimits, final Expression expression, final boolean hollow, final int timeout)
             throws ExpressionException, MaxChangedBlocksException {
 
         for (String parName : parameterNames) {
@@ -2458,7 +2458,7 @@ public class EditSession implements Extent, AutoCloseable {
                 return null;
             }
             @Override
-            protected SafeBlockData getMaterial(double[] parameters, Pattern pattern) {
+            protected ParametricBlockData getMaterial(double[] parameters, Pattern pattern) {
                 try {
                     // cannot provide better initialization (with a defaultMaterial) from pattern as position is not known yet
                     int typeVar = -1;
@@ -2487,9 +2487,9 @@ public class EditSession implements Extent, AutoCloseable {
 
                     if (newType != typeVar || newData != dataVar) {
                         BlockState state = LegacyMapper.getInstance().getBlockFromLegacy(newType, newData);
-                        return state == null ? new SafeBlockData(position, defaultMaterial) : new SafeBlockData(position, state.toBaseBlock());
+                        return state == null ? new ParametricBlockData(parameters, scaledPos, position, defaultMaterial) : new ParametricBlockData(parameters, scaledPos, position, state.toBaseBlock());
                     } else {
-                        return new SafeBlockData(position, defaultMaterial);
+                        return new ParametricBlockData(parameters, scaledPos, position, defaultMaterial);
                     }
                 } catch (ExpressionTimeoutException e) {
                     timedOut[0] = timedOut[0] + 1;
