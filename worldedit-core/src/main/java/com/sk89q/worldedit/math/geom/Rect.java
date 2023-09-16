@@ -4,7 +4,7 @@ import com.sk89q.worldedit.math.Vector3;
 
 public class Rect implements Orthotope {
     private Line leftLine, rightLine, lowerLine, upperLine;
-    private boolean isSplit;
+    private boolean isSplit; //TODO: possibly obsolete, maybe remove
     private Rect minChild, maxChild;
     private final Axis orientationRight, orientationUp; // perpendicular axis in 3D space
     private Axis splittingAxis;
@@ -18,6 +18,7 @@ public class Rect implements Orthotope {
         this.orientationRight = orientationRight;
         this.orientationUp = orientationUp;
 
+        this.splittingAxis = Axis.NOAXIS;
         this.isSplit = false;
         this.minChild = null;
         this.maxChild = null;
@@ -56,14 +57,17 @@ public class Rect implements Orthotope {
 
     @Override
     public boolean split(Axis axis, AdaptiveParameterGrid grid) {
-        if (!(axis == orientationRight || axis == orientationUp)) {
+        if (!(axis == orientationRight || axis == orientationUp) || axis == splittingAxis) {
             return false;
+        /* TODO: make this more efficient by avoiding recalculation of points
         } else if (isSplit) {
             // TODO: save splittingDirection?
             // is already split but in the other direction => delegate splitting to children
             // TODO: maybe simply destroy structure and get new children by splitting in the new direction?
             minChild.split(axis, grid);
             maxChild.split(axis, grid);
+
+        */
         } else if (axis == orientationRight) {
             lowerLine.split(axis, grid);
             upperLine.split(axis, grid);
@@ -72,6 +76,7 @@ public class Rect implements Orthotope {
             Line splittingLine = new Line(lowerLines[0].getMaxPoint(), upperLines[0].getMaxPoint(), orientationUp);
             minChild = new Rect(leftLine, splittingLine, lowerLines[0], upperLines[0], orientationRight, orientationUp);
             maxChild = new Rect(splittingLine, rightLine, lowerLines[1], upperLines[1], orientationRight, orientationUp);
+            this.splittingAxis = orientationRight;
             isSplit = true;
         } else if (axis == orientationUp) {
             leftLine.split(axis, grid);
@@ -81,6 +86,7 @@ public class Rect implements Orthotope {
             Line splittingLine = new Line(leftLines[0].getMaxPoint(), rightLines[0].getMaxPoint(), orientationRight);
             minChild = new Rect(leftLines[0], rightLines[0], lowerLine, splittingLine, orientationRight, orientationUp);
             maxChild = new Rect(leftLines[1], rightLines[1], splittingLine, upperLine, orientationRight, orientationUp);
+            this.splittingAxis = orientationUp;
             isSplit = true;
         }
         return true;
@@ -91,6 +97,19 @@ public class Rect implements Orthotope {
         return new Rect[] {minChild, maxChild};
     }
 
+    public Line getLeftLine() {
+        return leftLine;
+    }
+    public Line getRightLine() {
+        return rightLine;
+    }
 
+    public Line getLowerLine() {
+        return lowerLine;
+    }
+
+    public Line getUpperLine() {
+        return upperLine;
+    }
 }
 

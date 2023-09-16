@@ -32,14 +32,51 @@ public class AdaptiveParameterGrid {
                 CombinedPoint leftUpper = new CombinedPoint(this, new double[]{parameterLimits[0].getX(), parameterLimits[1].getZ()});
                 CombinedPoint rightLower = new CombinedPoint(this, new double[]{parameterLimits[0].getZ(), parameterLimits[1].getX()});
                 CombinedPoint rightUpper = new CombinedPoint(this, new double[]{parameterLimits[0].getZ(), parameterLimits[1].getZ()});
-                Line left = new Line(leftLower, leftUpper, Axis.Z);
-                Line right = new Line(rightLower, rightUpper, Axis.Z);
+                Line left = new Line(leftLower, leftUpper, Axis.Y);
+                Line right = new Line(rightLower, rightUpper, Axis.Y);
                 Line lower = new Line(leftLower, rightLower, Axis.X);
                 Line upper = new Line(leftUpper, rightUpper, Axis.X);
-                root = new Rect(left, right, lower, upper, Axis.X, Axis.Z);
+                root = new Rect(left, right, lower, upper, Axis.X, Axis.Y);
                 break;
             case 3:
-                root = new RectangularCuboid();
+                CombinedPoint[][][] points = new CombinedPoint[2][2][2];
+                int[] indices = {0,1};
+                for (int i : indices) {
+                    for (int j : indices) {
+                        for (int k : indices) {
+                            double[] parameters = new double[3];
+                            parameters[0] = (i==0 ? parameterLimits[0].getX() : parameterLimits[0].getZ());
+                            parameters[1] = (j==0 ? parameterLimits[1].getX() : parameterLimits[1].getZ());
+                            parameters[2] = (k==0 ? parameterLimits[2].getX() : parameterLimits[2].getZ());
+                            points[i][j][k] = new CombinedPoint(this, parameters);
+                        }
+                    }
+                }
+                Line e0x0 = new Line(points[0][0][0], points[0][1][0],Axis.Y);
+                Line e0x1 = new Line(points[0][0][1], points[0][1][1],Axis.Y);
+                Line e1x0 = new Line(points[1][0][0], points[1][1][0],Axis.Y);
+                Line e1x1 = new Line(points[1][0][1], points[1][1][1],Axis.Y);
+
+                Line e00x = new Line(points[0][0][0], points[0][0][1],Axis.Z);
+                Line e01x = new Line(points[0][1][0], points[0][1][1],Axis.Z);
+                Line e10x = new Line(points[1][0][0], points[1][0][1],Axis.Z);
+                Line e11x = new Line(points[1][1][0], points[1][1][1],Axis.Z);
+
+                Line ex00 = new Line(points[0][0][0], points[1][0][0],Axis.X);
+                Line ex01 = new Line(points[0][0][1], points[1][0][1],Axis.X);
+                Line ex10 = new Line(points[0][1][0], points[1][1][0],Axis.X);
+                Line ex11 = new Line(points[0][1][1], points[1][1][1],Axis.X);
+
+                Rect f0xx = new Rect(e0x0, e0x1, e00x, e01x, Axis.Z,Axis.Y);
+                Rect f1xx = new Rect(e1x0, e1x1, e10x, e11x, Axis.Z,Axis.Y);
+
+                Rect fxx0 = new Rect(e0x0, e1x0, ex00, ex10, Axis.X,Axis.Y);
+                Rect fxx1 = new Rect(e0x1, e1x1, ex01, ex11, Axis.X,Axis.Y);
+
+                Rect fx0x = new Rect(e00x, e10x, ex00, ex01, Axis.X,Axis.Z);
+                Rect fx1x = new Rect(e01x, e11x, ex10, ex11, Axis.X,Axis.Z);
+
+                root = new RectangularCuboid(f0xx, f1xx, fxx0, fxx1, fx0x, fx1x);
                 break;
         }
     }

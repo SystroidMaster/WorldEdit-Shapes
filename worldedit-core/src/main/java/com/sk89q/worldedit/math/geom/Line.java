@@ -55,10 +55,6 @@ public class Line implements Orthotope{
         return new Line[] {minChild, maxChild};
     }
 
-    public CombinedPoint getMinPoint() {
-        return minPoint;
-    }
-
     public CombinedPoint getMaxPoint() {
         return maxPoint;
     }
