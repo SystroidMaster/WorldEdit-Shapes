@@ -2392,9 +2392,9 @@ public class EditSession implements Extent, AutoCloseable {
      * @throws MaxChangedBlocksException if the maximum block change limit is exceeded
      */
     public int makeParametricShape(final Region region, final Vector3 zero, final Vector3 unit,
-                         final Pattern pattern, final List<String> parameterNames, Vector2[] parameterLimits, final String expressionString, final boolean hollow)
+                         final Pattern pattern, final List<String> parameterNames, List<String> parameterLimits, Vector2 recursionLimits,final String expressionString, final boolean hollow)
             throws ExpressionException, MaxChangedBlocksException {
-        return makeParametricShape(region, zero, unit, pattern, parameterNames, parameterLimits, expressionString, hollow, WorldEdit.getInstance().getConfiguration().calculationTimeout);
+        return makeParametricShape(region, zero, unit, pattern, parameterNames, parameterLimits, recursionLimits, expressionString, hollow, WorldEdit.getInstance().getConfiguration().calculationTimeout);
     }
 
     /**
@@ -2412,18 +2412,18 @@ public class EditSession implements Extent, AutoCloseable {
      * @throws MaxChangedBlocksException if the maximum block change limit is exceeded
      */
     public int makeParametricShape(final Region region, final Vector3 zero, final Vector3 unit,
-                         final Pattern pattern, final List<String> parameterNames, Vector2[] parameterLimits, final String expressionString, final boolean hollow, final int timeout)
+                         final Pattern pattern, final List<String> parameterNames, List<String> parameterLimits, Vector2 recursionLimits, final String expressionString, final boolean hollow, final int timeout)
             throws ExpressionException, MaxChangedBlocksException {
         List<String> varNames = new ArrayList(Arrays.asList("x", "y", "z", "type", "data"));
         varNames.addAll(parameterNames);
         final Expression expression = Expression.compile(expressionString, varNames.toArray(new String[0]));
         expression.optimize();
-        return makeParametricShape(region, zero, unit, pattern, parameterNames, parameterLimits, expression, hollow, timeout);
+        return makeParametricShape(region, zero, unit, pattern, parameterNames, parameterLimits, recursionLimits, expression, hollow, timeout);
     }
 
 
     public int makeParametricShape(final Region region, final Vector3 zero, final Vector3 unit,
-                         final Pattern pattern, final List<String> parameterNames, Vector2[] parameterLimits, final Expression expression, final boolean hollow, final int timeout)
+                         final Pattern pattern, final List<String> parameterNames, List<String> parameterLimits, Vector2 recursionLimits, final Expression expression, final boolean hollow, final int timeout)
             throws ExpressionException, MaxChangedBlocksException {
 
         for (String parName : parameterNames) {
@@ -2468,7 +2468,10 @@ public class EditSession implements Extent, AutoCloseable {
                     varInits.addAll(DoubleStream.of(parameters).boxed().toList());
                     
                     //TODO: Go on here by creating correct initializing for expression variables
-                    expression.evaluate(varInits.stream().mapToDouble(Double::doubleValue).toArray(), timeout); // TODO: maybe consider return value as additional condition
+                    if (expression.evaluate(varInits.stream().mapToDouble(Double::doubleValue).toArray(), timeout) <= 0) {
+                        return null;
+                    }
+                    // expression.evaluate(varInits.stream().mapToDouble(Double::doubleValue).toArray(), timeout); // TODO: maybe consider return value as additional condition
                     
                     // read coordinates calculated from parameters
                     double x = xVariable.getValue();
